@@ -8,13 +8,24 @@ import (
 	"unsafe"
 	"bufio"
 	"io"
-
+	"strings"
+	"unicode/utf8"
 	"golang.org/x/sys/unix"
 	"golang.org/x/crypto/ssh/terminal"
-
 	"github.com/pkg/term/termios"
 	"github.com/nsf/termbox-go"
-	"github.com/mattn/go-runewidth"
+)
+
+// キー対応表
+const (
+	ArrowUp byte= 65
+	ArrowDown   = 66
+	ArrowRight  = 67
+	ArrowLeft   = 68
+	Ctrlq				= 17
+	Enter 			= 13
+	BackSpace		= 127
+	Tab					= 9
 )
 
 // ファイルデータ
@@ -30,7 +41,6 @@ type EditorConfig struct {
 	defaultTtystate unix.Termios //初期のターミナル属性
 	cursorx int									 //カーソルのx座標
 	cursory int									 //カーソルのy座標
-	cx int											 //現在の配列での位置
 	wsRow int										 //行
 	wsCol int										 //列
 	drawingStartRow int					 //描画する最初の行
@@ -42,7 +52,6 @@ func(ele *EditorConfig) construct() {
 	ele.cursory = 0
 	ele.drawingStartRow = 0
 	ele.drawingStartCol = 0
-	ele.cx = 0
 	getWindowSize()
 }
 var Editor EditorConfig
@@ -96,6 +105,7 @@ func fromFile() {
 		}
 
 		data = data + string(line)
+		data = strings.Replace(data, "\t", "    ", -1)
 		if !isPrefix {
 			File.data = append(File.data, data)
 			data = ""
@@ -112,7 +122,8 @@ func toFile() {
 	defer f.Close()
 
 	for i := 0; i < len(File.data); i++ {
-		_, er := f.WriteString(File.data[i] + "\n")
+		data := strings.Replace(File.data[i], "    ", "\t", -1)
+		_, er := f.WriteString(data + "\n")
 		if er != nil {
 			log.Fatal(er)
 		}
@@ -164,26 +175,23 @@ func inputChar() {
 		switch len(p){
 		case 3:
 			switch p[2]{
-			case 65:
+			case ArrowUp:
 				moveCursor(0,-1)
-			case 66:
+			case ArrowDown:
 				moveCursor(0,1)
-			case 67:
+			case ArrowRight:
 				moveCursor(1,0)
-			case 68:
+			case ArrowLeft:
 				moveCursor(-1,0)
 			}
-		case 4:
-			if p[0] == 27 && p[1] == 91 && p[2] == 51 && p[3] == 126 {
-				fmt.Println("delete")
-			}
+		}
 		default:
 			switch p[0] {
-			case 13:
+			case Enter:
 				fmt.Println("enter")
-			case 127:
+			case BackSpace:
 				fmt.Println("backspace")
-			case 17: //ctrl + q
+			case Ctrlq:
 				running = false
 			default:
 				t := *(*string)(unsafe.Pointer(&p))
@@ -204,17 +212,16 @@ func moveCursor(addx int, addy int) {
 // カーソル位置を移動する
 func canMoveCursor(addx int, addy int) {
 	r := Editor.cursory + Editor.drawingStartRow //行番号
-	c := Editor.cx //列番号
+	c := Editor.cursorx + Editor.drawingStartCol //列番号
 
 	X := Editor.cursorx
 	// 現在の行に1つ以上文字があるとき、文字のサイズを考慮
 	if len(File.data[r]) > 0{
-			X += addx * runewidth.RuneWidth(rune(File.data[r][c]))
+			X += addx * utf8.RuneCountInString(string(File.data[r][c]))
 	}
 
 	if X >= 0 && X <= Editor.wsCol{
 		Editor.cursorx = X
-		Editor.cx += addx
 	} else {
 		controlHorizontalMovement(X)
 	}
@@ -236,11 +243,9 @@ func canMoveCursor(addx int, addy int) {
 		Editor.cursorx = 0
 		temp := len(File.data[r]) - 1
 		Editor.drawingStartCol = max(0,temp)
-		Editor.cx = max(0,temp)
 	}
 	if length > 0 && length < Editor.wsCol && Editor.cursorx > length - 1 {
 		Editor.cursorx = length - 1
-		Editor.cx = length - 1
 	}
 }
 
@@ -250,13 +255,11 @@ func controlHorizontalMovement(X int) {
 	if X < 0 && Editor.drawingStartCol > 0 {
 		Editor.cursorx = 0
 		Editor.drawingStartCol--
-		Editor.cx--
 	}
 	// 右スクロール
 	if X > Editor.wsCol && len(File.data[Editor.cursory]) - 1 - Editor.drawingStartCol > Editor.wsCol{
 		Editor.cursorx = Editor.wsCol
 		Editor.drawingStartCol++
-		Editor.cx++
 	}
 }
 
@@ -278,20 +281,18 @@ func controlVerticalMovement(Y int) {
 func setText() {
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 
-	y := 0
-
-	for i := Editor.drawingStartRow; i < Editor.drawingStartRow + Editor.wsRow; i++ {
+	for y := 0; y < Editor.wsRow; y++ {
 		// もしファイルの行数が表示限界の行数よりも
 		// 小さい時に"~"を表示する
-		if i >= len(File.data) {
+		if y + Editor.drawingStartRow >= len(File.data) {
 			termbox.SetCell(0,y,rune('~'),termbox.ColorDefault,termbox.ColorDefault)
 		} else {
-			text := File.data[i]
+			text := File.data[y + Editor.drawingStartRow]
 			runeText := []rune(text)
 
 			x := 0
 			for j := Editor.drawingStartCol; j < len(runeText); j++ {
-				w := runewidth.RuneWidth(runeText[j])
+				w := utf8.RuneCountInString(string(text[j]))
 
 				// 行の末まで来た時、または、表示限界の列数を超えたら
 				// 次の行の描画をする
@@ -304,7 +305,6 @@ func setText() {
 				x += w
 			}
 		}
-		y += 1
 	}
 	termbox.Flush()
 }
