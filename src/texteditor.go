@@ -18,11 +18,21 @@ import (
 
 // キー対応表
 const (
+	// size 3
 	ArrowUp byte= 65
 	ArrowDown   = 66
 	ArrowRight  = 67
 	ArrowLeft   = 68
-	Ctrlq				= 17
+
+	// size 1
+	Ctrlq				= 17 //quit
+	Ctrls				= 19 //save
+	Ctrlz       = 26 //undo
+	Ctrly				= 25 //redo
+	Ctrlu				= 21 //up
+	Ctrld				= 4  //down
+	Ctrlr 			= 18 //right
+	Ctrll 			= 12 //left
 	Enter 			= 13
 	BackSpace		= 127
 	Tab					= 9
@@ -106,6 +116,7 @@ func fromFile() {
 
 		data = data + string(line)
 		data = strings.Replace(data, "\t", "    ", -1)
+		data = data + "\n"
 		if !isPrefix {
 			File.data = append(File.data, data)
 			data = ""
@@ -123,7 +134,7 @@ func toFile() {
 
 	for i := 0; i < len(File.data); i++ {
 		data := strings.Replace(File.data[i], "    ", "\t", -1)
-		_, er := f.WriteString(data + "\n")
+		_, er := f.WriteString(data)
 		if er != nil {
 			log.Fatal(er)
 		}
@@ -163,7 +174,7 @@ func readBuffer(bufCh chan []byte) {
 }
 
 // 文字列の入力を受け取る
-func inputChar() {
+func getChar() {
 	bufCh := make(chan []byte, 1)
 	go readBuffer(bufCh)
 
@@ -171,7 +182,7 @@ func inputChar() {
 
 	for running{
 		p := <-bufCh
-		// fmt.Println(p) 中身確認用
+		// fmt.Println(p) //中身確認用
 		switch len(p){
 		case 3:
 			switch p[2]{
@@ -184,68 +195,67 @@ func inputChar() {
 			case ArrowLeft:
 				moveCursor(-1,0)
 			}
-		}
 		default:
 			switch p[0] {
 			case Enter:
-				fmt.Println("enter")
+				enter()
+				moveCursor(0,1)
 			case BackSpace:
 				fmt.Println("backspace")
 			case Ctrlq:
 				running = false
+			case Ctrls:
+				toFile()
 			default:
-				t := *(*string)(unsafe.Pointer(&p))
-				fmt.Printf(t)
+				insertChar(*(*string)(unsafe.Pointer(&p)))
+				moveCursor(1,0)
 			}
 		}
+		setText()
 	}
 }
 
 // カーソル移動制御
 func moveCursor(addx int, addy int) {
 	canMoveCursor(addx, addy)
-	setText()
 	termbox.SetCursor(Editor.cursorx,Editor.cursory)
 	termbox.Flush()
 }
 
 // カーソル位置を移動する
 func canMoveCursor(addx int, addy int) {
-	r := Editor.cursory + Editor.drawingStartRow //行番号
-	c := Editor.cursorx + Editor.drawingStartCol //列番号
-
-	X := Editor.cursorx
-	// 現在の行に1つ以上文字があるとき、文字のサイズを考慮
-	if len(File.data[r]) > 0{
-			X += addx * utf8.RuneCountInString(string(File.data[r][c]))
-	}
-
-	if X >= 0 && X <= Editor.wsCol{
+	X := Editor.cursorx + addx
+	if X >= 0 && X < Editor.wsCol{
 		Editor.cursorx = X
 	} else {
 		controlHorizontalMovement(X)
 	}
 
 	Y := Editor.cursory + addy
-	if Y >= 0 && Y < Editor.wsRow && len(File.data) > Y {
+	if Y >= 0 && Y < Editor.wsRow && len(File.data) > Y{
 		Editor.cursory = Y
 	} else {
 		controlVerticalMovement(Y)
 	}
 
-	// 移動後に求めなおす
-	r = Editor.cursory + Editor.drawingStartRow
+	checkX(Editor.cursory + Editor.drawingStartRow)
+}
 
-	// 垂直移動したときに、現在の描画位置よりも
-	// 文字列が短かった場合に文字列の最後尾に移動する
-	length := len(File.data[r]) - Editor.drawingStartCol;
-	if length <= 0 {
+// 垂直移動したときに、現在の描画位置よりも
+// 文字列が短かった場合に文字列の最後尾にカーソルを移動する
+func checkX(r int) {
+	if len(File.data) == 0 {
 		Editor.cursorx = 0
-		temp := len(File.data[r]) - 1
-		Editor.drawingStartCol = max(0,temp)
-	}
-	if length > 0 && length < Editor.wsCol && Editor.cursorx > length - 1 {
-		Editor.cursorx = length - 1
+		Editor.drawingStartCol = 0
+	} else {
+		length := len(File.data[r]) - Editor.drawingStartCol;
+		if length <= 0 {
+			Editor.cursorx = 0
+			Editor.drawingStartCol = max(0, len(File.data[r]) - 1)
+		}
+		if length > 0 && length < Editor.wsCol && Editor.cursorx > length - 1 {
+			Editor.cursorx = length - 1
+		}
 	}
 }
 
@@ -257,7 +267,7 @@ func controlHorizontalMovement(X int) {
 		Editor.drawingStartCol--
 	}
 	// 右スクロール
-	if X > Editor.wsCol && len(File.data[Editor.cursory]) - 1 - Editor.drawingStartCol > Editor.wsCol{
+	if X >= Editor.wsCol && len(File.data[Editor.cursory]) - 1 - Editor.drawingStartCol >= Editor.wsCol{
 		Editor.cursorx = Editor.wsCol
 		Editor.drawingStartCol++
 	}
@@ -271,8 +281,8 @@ func controlVerticalMovement(Y int) {
 		Editor.drawingStartRow--
 	}
 	// 下スクロール
-	if Y >= Editor.wsRow && (len(File.data) - 1) - Editor.drawingStartRow > Editor.wsRow {
-		Editor.cursory = Editor.wsRow
+	if Y >= Editor.wsRow && len(File.data) - 1 - Editor.drawingStartRow >= Editor.wsRow {
+		Editor.cursory = Editor.wsRow - 1
 		Editor.drawingStartRow++
 	}
 }
@@ -285,28 +295,66 @@ func setText() {
 		// もしファイルの行数が表示限界の行数よりも
 		// 小さい時に"~"を表示する
 		if y + Editor.drawingStartRow >= len(File.data) {
-			termbox.SetCell(0,y,rune('~'),termbox.ColorDefault,termbox.ColorDefault)
-		} else {
+			if y != 0 {
+				termbox.SetCell(0,y,rune('~'),termbox.ColorDefault,termbox.ColorDefault)
+			}
+				} else {
 			text := File.data[y + Editor.drawingStartRow]
 			runeText := []rune(text)
 
 			x := 0
-			for j := Editor.drawingStartCol; j < len(runeText); j++ {
-				w := utf8.RuneCountInString(string(text[j]))
-
-				// 行の末まで来た時、または、表示限界の列数を超えたら
-				// 次の行の描画をする
-				if x + w > Editor.wsCol  || text[j] == '\n' {
-					break
-				}
-
+			for j := Editor.drawingStartCol; j < min(Editor.wsCol + Editor.drawingStartCol, len(runeText)); j++ {
 				termbox.SetCell(x,y,runeText[j],termbox.ColorDefault, termbox.ColorDefault)
 
-				x += w
+				x += utf8.RuneCountInString(string(text[j]))
 			}
 		}
 	}
 	termbox.Flush()
+}
+
+// 文字を挿入する
+func insertChar(s string) {
+	r := Editor.cursory + Editor.drawingStartCol
+	c := Editor.cursorx + Editor.drawingStartRow
+
+	if length := len(File.data[r]); length - 1 == c {
+		if File.data[r][length - 1] == '\n' {
+			File.data[r] = File.data[r][:length - 1] + s + "\n"
+		} else {
+			File.data[r] = File.data[r] + s
+		}
+	} else {
+		File.data[r] = File.data[r][:c] + s + File.data[r][c:]
+	}
+}
+
+// enterを押したとき
+func enter() {
+	r := Editor.cursory + Editor.drawingStartCol + 1
+	c := Editor.cursorx + Editor.drawingStartRow
+	File.data = append(File.data[:r+1], File.data[r:]...)
+	if length := len(File.data[r]); length - 1 == c {
+		File.data[r] = "\n"
+	} else {
+		File.data[r] = File.data[r - 1][c:]
+		File.data[r - 1] = File.data[r - 1][:c]
+		insertNewLineCode(&File.data[r])
+		insertNewLineCode(&File.data[r - 1])
+	}
+}
+
+// 改行コードを挿入
+func insertNewLineCode(s *string) {
+	if !strings.Contains(*s, "\n") {
+		*s = *s + "\n"
+	}
+}
+
+func backSpace() {
+	// r := Editor.cursory + Editor.drawingStartCol
+	// c := Editor.cursorx + Editor.drawingStartRow
+
 }
 
 
@@ -325,7 +373,7 @@ func main(){
 	defer termbox.Close()
 	setText()
 
-	inputChar()
+	getChar()
 
 	resetRawMode(&Editor.defaultTtystate)
 }
