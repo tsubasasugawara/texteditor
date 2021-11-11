@@ -315,32 +315,48 @@ func setText() {
 
 // 文字を挿入する
 func insertChar(s string) {
-	r := Editor.cursory + Editor.drawingStartCol
-	c := Editor.cursorx + Editor.drawingStartRow
+	r := Editor.cursory + Editor.drawingStartRow
+	c := Editor.cursorx + Editor.drawingStartCol
 
-	if length := len(File.data[r]); length - 1 == c {
-		if File.data[r][length - 1] == '\n' {
-			File.data[r] = File.data[r][:length - 1] + s + "\n"
-		} else {
-			File.data[r] = File.data[r] + s
-		}
+	if len(File.data) == 0 {
+		File.data = append(File.data, s+"\n")
+		return
+	}
+
+	length := len(File.data[r]);
+	if length - 1 != c {
+			File.data[r] = File.data[r][:c] + s + File.data[r][c:]
+			return
+	}
+
+	if File.data[r][length - 1] == '\n' {
+		File.data[r] = strings.Replace(File.data[r], "\n", s, -1) + "\n"
 	} else {
-		File.data[r] = File.data[r][:c] + s + File.data[r][c:]
+		File.data[r] = File.data[r] + s
 	}
 }
 
 // enterを押したとき
 func enter() {
-	r := Editor.cursory + Editor.drawingStartCol + 1
-	c := Editor.cursorx + Editor.drawingStartRow
+	r := Editor.cursory + Editor.drawingStartRow
+	c := Editor.cursorx + Editor.drawingStartCol
+
+	if len(File.data) == 0 {
+		File.data = append(File.data, "\n")
+		File.data = append(File.data, "")
+		return
+	}
+
+
 	File.data = append(File.data[:r+1], File.data[r:]...)
-	if length := len(File.data[r]); length - 1 == c {
+	length := len(File.data[r]);
+	if length - 1 == c {
 		File.data[r] = "\n"
 	} else {
-		File.data[r] = File.data[r - 1][c:]
-		File.data[r - 1] = File.data[r - 1][:c]
+		File.data[r+1] = File.data[r][c:]
+		File.data[r] = File.data[r][:c]
 		insertNewLineCode(&File.data[r])
-		insertNewLineCode(&File.data[r - 1])
+		insertNewLineCode(&File.data[r+1])
 	}
 }
 
@@ -352,8 +368,8 @@ func insertNewLineCode(s *string) {
 }
 
 func backSpace() {
-	// r := Editor.cursory + Editor.drawingStartCol
-	// c := Editor.cursorx + Editor.drawingStartRow
+	// r := Editor.cursory + Editor.drawingStartRow
+	// c := Editor.cursorx + Editor.drawingStartCol
 
 }
 
