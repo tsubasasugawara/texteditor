@@ -1,69 +1,72 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"log"
-	"syscall"
-	"unsafe"
+	// "fmt"
 	"bufio"
-	"io"
-	"strings"
-	"unicode/utf8"
-	"golang.org/x/sys/unix"
-	"golang.org/x/crypto/ssh/terminal"
-	"github.com/pkg/term/termios"
 	"github.com/nsf/termbox-go"
+	"github.com/pkg/term/termios"
+	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/sys/unix"
+	"io"
+	"log"
+	"os"
+	"strings"
+	"syscall"
+	"unicode/utf8"
+	"unsafe"
 )
 
 // キー対応表
 const (
 	// size 3
-	ArrowUp byte= 65
-	ArrowDown   = 66
-	ArrowRight  = 67
-	ArrowLeft   = 68
+	ArrowUp    byte = 65
+	ArrowDown       = 66
+	ArrowRight      = 67
+	ArrowLeft       = 68
 
 	// size 1
-	Ctrlq				= 17 //quit
-	Ctrls				= 19 //save
-	Ctrlz       = 26 //undo
-	Ctrly				= 25 //redo
-	Ctrlu				= 21 //up
-	Ctrld				= 4  //down
-	Ctrlr 			= 18 //right
-	Ctrll 			= 12 //left
-	Enter 			= 13
-	BackSpace		= 127
-	Tab					= 9
+	Ctrlq     = 17 //quit
+	Ctrls     = 19 //save
+	Ctrlz     = 26 //undo
+	Ctrly     = 25 //redo
+	Ctrlu     = 21 //up
+	Ctrld     = 4  //down
+	Ctrlr     = 18 //right
+	Ctrll     = 12 //left
+	Enter     = 13
+	BackSpace = 127
+	Tab       = 9
 )
 
 // ファイルデータ
 type TString struct {
-	data []string				//ファイルの中身
-	path string				//ファイルのパス
-	history []string	//操作の履歴
+	data    []string //ファイルの中身
+	path    string   //ファイルのパス
+	history []string //操作の履歴
 }
+
 var File TString
 
 // エディター
 type EditorConfig struct {
 	defaultTtystate unix.Termios //初期のターミナル属性
-	cursorx int									 //カーソルのx座標
-	cursory int									 //カーソルのy座標
-	wsRow int										 //行
-	wsCol int										 //列
-	drawingStartRow int					 //描画する最初の行
-	drawingStartCol int					 //描画する最初の列
+	cursorx         int          //カーソルのx座標
+	cursory         int          //カーソルのy座標
+	wsRow           int          //行
+	wsCol           int          //列
+	drawingStartRow int          //描画する最初の行
+	drawingStartCol int          //描画する最初の列
 }
+
 // Editorクラスのコンストラクタ
-func(ele *EditorConfig) construct() {
+func (ele *EditorConfig) construct() {
 	ele.cursorx = 0
 	ele.cursory = 0
 	ele.drawingStartRow = 0
 	ele.drawingStartCol = 0
 	getWindowSize()
 }
+
 var Editor EditorConfig
 
 // ウィンドウサイズを取得し、Editorに設定する
@@ -76,7 +79,7 @@ func getWindowSize() {
 }
 
 // 大きい方を返す
-func max(a int, b int) int{
+func max(a int, b int) int {
 	if a > b {
 		return a
 	} else {
@@ -85,7 +88,7 @@ func max(a int, b int) int{
 }
 
 // 小さい方を返す
-func min(a int, b int) int{
+func min(a int, b int) int {
 	if a > b {
 		return b
 	} else {
@@ -160,14 +163,14 @@ func setRawMode(attr *unix.Termios) {
 
 // ターミナル属性をリセットする
 func resetRawMode(attr *unix.Termios) {
-	termios.Tcsetattr(uintptr(syscall.Stdin),termios.TCSANOW,attr)
+	termios.Tcsetattr(uintptr(syscall.Stdin), termios.TCSANOW, attr)
 }
 
 // バッファの値を取得する
 func readBuffer(bufCh chan []byte) {
 	buf := make([]byte, 1024)
-	for{
-		if n,err := syscall.Read(syscall.Stdin,buf); err == nil {
+	for {
+		if n, err := syscall.Read(syscall.Stdin, buf); err == nil {
 			bufCh <- buf[:n]
 		}
 	}
@@ -180,35 +183,41 @@ func getChar() {
 
 	running := true
 
-	for running{
+	for running {
 		p := <-bufCh
 		// fmt.Println(p) //中身確認用
-		switch len(p){
+		switch len(p) {
 		case 3:
-			switch p[2]{
+			switch p[2] {
 			case ArrowUp:
-				moveCursor(0,-1)
+				moveCursor(0, -1)
 			case ArrowDown:
-				moveCursor(0,1)
+				moveCursor(0, 1)
 			case ArrowRight:
-				moveCursor(1,0)
+				moveCursor(1, 0)
 			case ArrowLeft:
-				moveCursor(-1,0)
+				moveCursor(-1, 0)
 			}
 		default:
 			switch p[0] {
 			case Enter:
 				enter()
-				moveCursor(0,1)
+				moveCursor(0, 1)
 			case BackSpace:
-				fmt.Println("backspace")
+				backSpace()
 			case Ctrlq:
 				running = false
 			case Ctrls:
 				toFile()
+			case Ctrlz:
+			case Ctrly:
+			case Ctrlu:
+			case Ctrld:
+			case Ctrlr:
+			case Ctrll:
 			default:
-				insertChar(*(*string)(unsafe.Pointer(&p)))
-				moveCursor(1,0)
+				textInsertion(*(*string)(unsafe.Pointer(&p)))
+				moveCursor(1, 0)
 			}
 		}
 		setText()
@@ -218,21 +227,21 @@ func getChar() {
 // カーソル移動制御
 func moveCursor(addx int, addy int) {
 	canMoveCursor(addx, addy)
-	termbox.SetCursor(Editor.cursorx,Editor.cursory)
+	termbox.SetCursor(Editor.cursorx, Editor.cursory)
 	termbox.Flush()
 }
 
 // カーソル位置を移動する
 func canMoveCursor(addx int, addy int) {
 	X := Editor.cursorx + addx
-	if X >= 0 && X < Editor.wsCol{
+	if X >= 0 && X < Editor.wsCol {
 		Editor.cursorx = X
 	} else {
 		controlHorizontalMovement(X)
 	}
 
 	Y := Editor.cursory + addy
-	if Y >= 0 && Y < Editor.wsRow && len(File.data) > Y{
+	if Y >= 0 && Y < Editor.wsRow && len(File.data) > Y {
 		Editor.cursory = Y
 	} else {
 		controlVerticalMovement(Y)
@@ -247,15 +256,16 @@ func checkX(r int) {
 	if len(File.data) == 0 {
 		Editor.cursorx = 0
 		Editor.drawingStartCol = 0
-	} else {
-		length := len(File.data[r]) - Editor.drawingStartCol;
-		if length <= 0 {
-			Editor.cursorx = 0
-			Editor.drawingStartCol = max(0, len(File.data[r]) - 1)
-		}
-		if length > 0 && length < Editor.wsCol && Editor.cursorx > length - 1 {
-			Editor.cursorx = length - 1
-		}
+		return
+	}
+
+	length := len(File.data[r]) - Editor.drawingStartCol
+	if length <= 0 {
+		Editor.cursorx = 0
+		Editor.drawingStartCol = max(0, len(File.data[r])-1)
+	}
+	if length > 0 && length < Editor.wsCol && Editor.cursorx > length-1 {
+		Editor.cursorx = length - 1
 	}
 }
 
@@ -267,7 +277,7 @@ func controlHorizontalMovement(X int) {
 		Editor.drawingStartCol--
 	}
 	// 右スクロール
-	if X >= Editor.wsCol && len(File.data[Editor.cursory]) - 1 - Editor.drawingStartCol >= Editor.wsCol{
+	if X >= Editor.wsCol && len(File.data[Editor.cursory])-1-Editor.drawingStartCol >= Editor.wsCol {
 		Editor.cursorx = Editor.wsCol
 		Editor.drawingStartCol++
 	}
@@ -281,7 +291,7 @@ func controlVerticalMovement(Y int) {
 		Editor.drawingStartRow--
 	}
 	// 下スクロール
-	if Y >= Editor.wsRow && len(File.data) - 1 - Editor.drawingStartRow >= Editor.wsRow {
+	if Y >= Editor.wsRow && len(File.data)-1-Editor.drawingStartRow >= Editor.wsRow {
 		Editor.cursory = Editor.wsRow - 1
 		Editor.drawingStartRow++
 	}
@@ -294,17 +304,17 @@ func setText() {
 	for y := 0; y < Editor.wsRow; y++ {
 		// もしファイルの行数が表示限界の行数よりも
 		// 小さい時に"~"を表示する
-		if y + Editor.drawingStartRow >= len(File.data) {
+		if y+Editor.drawingStartRow >= len(File.data) {
 			if y != 0 {
-				termbox.SetCell(0,y,rune('~'),termbox.ColorDefault,termbox.ColorDefault)
+				termbox.SetCell(0, y, rune('~'), termbox.ColorDefault, termbox.ColorDefault)
 			}
-				} else {
-			text := File.data[y + Editor.drawingStartRow]
+		} else {
+			text := File.data[y+Editor.drawingStartRow]
 			runeText := []rune(text)
 
 			x := 0
-			for j := Editor.drawingStartCol; j < min(Editor.wsCol + Editor.drawingStartCol, len(runeText)); j++ {
-				termbox.SetCell(x,y,runeText[j],termbox.ColorDefault, termbox.ColorDefault)
+			for j := Editor.drawingStartCol; j < min(Editor.wsCol+Editor.drawingStartCol, len(runeText)); j++ {
+				termbox.SetCell(x, y, runeText[j], termbox.ColorDefault, termbox.ColorDefault)
 
 				x += utf8.RuneCountInString(string(text[j]))
 			}
@@ -314,7 +324,7 @@ func setText() {
 }
 
 // 文字を挿入する
-func insertChar(s string) {
+func textInsertion(s string) {
 	r := Editor.cursory + Editor.drawingStartRow
 	c := Editor.cursorx + Editor.drawingStartCol
 
@@ -323,13 +333,13 @@ func insertChar(s string) {
 		return
 	}
 
-	length := len(File.data[r]);
-	if length - 1 != c {
-			File.data[r] = File.data[r][:c] + s + File.data[r][c:]
-			return
+	length := len(File.data[r])
+	if length-1 != c {
+		File.data[r] = File.data[r][:c] + s + File.data[r][c:]
+		return
 	}
 
-	if File.data[r][length - 1] == '\n' {
+	if File.data[r][length-1] == '\n' {
 		File.data[r] = strings.Replace(File.data[r], "\n", s, -1) + "\n"
 	} else {
 		File.data[r] = File.data[r] + s
@@ -347,16 +357,15 @@ func enter() {
 		return
 	}
 
-
 	File.data = append(File.data[:r+1], File.data[r:]...)
-	length := len(File.data[r]);
-	if length - 1 == c {
-		File.data[r] = "\n"
+	length := len(File.data[r])
+	if length-1 == c {
+		File.data[r+1] = "\n"
 	} else {
 		File.data[r+1] = File.data[r][c:]
 		File.data[r] = File.data[r][:c]
-		insertNewLineCode(&File.data[r])
 		insertNewLineCode(&File.data[r+1])
+		insertNewLineCode(&File.data[r])
 	}
 }
 
@@ -367,14 +376,27 @@ func insertNewLineCode(s *string) {
 	}
 }
 
+// BackSpace
 func backSpace() {
-	// r := Editor.cursory + Editor.drawingStartRow
-	// c := Editor.cursorx + Editor.drawingStartCol
+	r := Editor.cursory + Editor.drawingStartRow
+	c := Editor.cursorx + Editor.drawingStartCol
 
+	if c == 0 && r == 0 {
+		return
+	}
+
+	if c == 0 && r > 0 {
+		File.data[r-1] = strings.Replace(File.data[r-1], "\n", File.data[r], 1)
+		File.data = append(File.data[:r], File.data[r+1:]...)
+		moveCursor(0, -1)
+		return
+	}
+
+	File.data[r] = File.data[r][:c-1] + File.data[r][c:]
+	moveCursor(-1, 0)
 }
 
-
-func main(){
+func main() {
 	File.path = os.Args[1]
 	fromFile()
 
