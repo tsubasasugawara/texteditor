@@ -25,17 +25,17 @@ const (
 	ArrowLeft       = 68
 
 	// size 1
-	Ctrlq     = 17 //quit
-	Ctrls     = 19 //save
-	Ctrlz     = 26 //undo
-	Ctrly     = 25 //redo
-	Ctrlu     = 21 //up
-	Ctrld     = 4  //down
-	Ctrlr     = 18 //right
-	Ctrll     = 12 //left
-	Enter     = 13
-	BackSpace = 127
-	Tab       = 9
+	Ctrlq	        = 17 //quit
+	Ctrls     		= 19 //save
+	Ctrlz     		= 26 //undo
+	Ctrly     		= 25 //redo
+	Ctrlu     		= 21 //up
+	Ctrld    		= 4  //down
+	Ctrlr     		= 18 //right
+	Ctrll    		= 12 //left
+	Enter     		= 13
+	BackSpace 		= 127
+	Tab      		= 9
 )
 
 // ファイルデータ
@@ -82,18 +82,16 @@ func getWindowSize() {
 func max(a int, b int) int {
 	if a > b {
 		return a
-	} else {
-		return b
 	}
+	return b
 }
 
 // 小さい方を返す
 func min(a int, b int) int {
 	if a > b {
 		return b
-	} else {
-		return a
 	}
+	return a
 }
 
 // ファイルを読み込みファイルデータを返す
@@ -117,9 +115,7 @@ func fromFile() {
 			log.Fatal(err)
 		}
 
-		data = data + string(line)
-		data = strings.Replace(data, "\t", "    ", -1)
-		data = data + "\n"
+		data = strings.Replace(data + string(line), "\t", "    ", -1) + "\n"
 		if !isPrefix {
 			File.data = append(File.data, data)
 			data = ""
@@ -182,7 +178,6 @@ func getChar() {
 	go readBuffer(bufCh)
 
 	running := true
-
 	for running {
 		p := <-bufCh
 		// fmt.Println(p) //中身確認用
@@ -277,7 +272,7 @@ func controlHorizontalMovement(X int) {
 		Editor.drawingStartCol--
 	}
 	// 右スクロール
-	if X >= Editor.wsCol && len(File.data[Editor.cursory])-1-Editor.drawingStartCol >= Editor.wsCol {
+	if X >= Editor.wsCol && len(File.data[Editor.cursory+Editor.drawingStartRow])-1-Editor.drawingStartCol >= Editor.wsCol {
 		Editor.cursorx = Editor.wsCol
 		Editor.drawingStartCol++
 	}
@@ -305,15 +300,17 @@ func setText() {
 		// もしファイルの行数が表示限界の行数よりも
 		// 小さい時に"~"を表示する
 		if y+Editor.drawingStartRow >= len(File.data) {
-			if y != 0 {
-				termbox.SetCell(0, y, rune('~'), termbox.ColorDefault, termbox.ColorDefault)
+			if y == 0 {
+				continue
 			}
+
+			termbox.SetCell(0, y, rune('~'), termbox.ColorDefault, termbox.ColorDefault)
 		} else {
 			text := File.data[y+Editor.drawingStartRow]
 			runeText := []rune(text)
 
 			x := 0
-			for j := Editor.drawingStartCol; j < min(Editor.wsCol+Editor.drawingStartCol, len(runeText)); j++ {
+			for j := Editor.drawingStartCol; j < min(Editor.drawingStartCol+Editor.wsCol, len(runeText)); j++ {
 				termbox.SetCell(x, y, runeText[j], termbox.ColorDefault, termbox.ColorDefault)
 
 				x += utf8.RuneCountInString(string(text[j]))
@@ -334,16 +331,12 @@ func textInsertion(s string) {
 	}
 
 	length := len(File.data[r])
-	if length-1 != c {
-		File.data[r] = File.data[r][:c] + s + File.data[r][c:]
+	if length == c && File.data[r][length-1] == '\n' {
+		File.data[r] = strings.Replace(File.data[r], "\n", s, -1) + "\n"
 		return
 	}
 
-	if File.data[r][length-1] == '\n' {
-		File.data[r] = strings.Replace(File.data[r], "\n", s, -1) + "\n"
-	} else {
-		File.data[r] = File.data[r] + s
-	}
+	File.data[r] = File.data[r][:c] + s + File.data[r][c:]
 }
 
 // enterを押したとき
@@ -353,20 +346,14 @@ func enter() {
 
 	if len(File.data) == 0 {
 		File.data = append(File.data, "\n")
-		File.data = append(File.data, "")
 		return
 	}
 
 	File.data = append(File.data[:r+1], File.data[r:]...)
-	length := len(File.data[r])
-	if length-1 == c {
-		File.data[r+1] = "\n"
-	} else {
-		File.data[r+1] = File.data[r][c:]
-		File.data[r] = File.data[r][:c]
-		insertNewLineCode(&File.data[r+1])
-		insertNewLineCode(&File.data[r])
-	}
+	File.data[r+1] = File.data[r][c:]
+	File.data[r] = File.data[r][:c]
+	insertNewLineCode(&File.data[r+1])
+	insertNewLineCode(&File.data[r])
 }
 
 // 改行コードを挿入
@@ -386,9 +373,10 @@ func backSpace() {
 	}
 
 	if c == 0 && r > 0 {
+		length := len(File.data[r-1])
 		File.data[r-1] = strings.Replace(File.data[r-1], "\n", File.data[r], 1)
 		File.data = append(File.data[:r], File.data[r+1:]...)
-		moveCursor(0, -1)
+		moveCursor(length-1, -1)
 		return
 	}
 
