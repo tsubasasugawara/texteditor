@@ -18,24 +18,48 @@ import (
 
 // キー対応表
 const (
-	// size 3
+	// size 3 Scroll
 	ArrowUp    byte = 65
 	ArrowDown       = 66
 	ArrowRight      = 67
 	ArrowLeft       = 68
 
 	// size 1
-	Ctrlq	        = 17 //quit
-	Ctrls     		= 19 //save
-	Ctrlz     		= 26 //undo
-	Ctrly     		= 25 //redo
-	Ctrlu     		= 21 //up
-	Ctrld    		= 4  //down
-	Ctrlr     		= 18 //right
-	Ctrll    		= 12 //left
-	Enter     		= 13
-	BackSpace 		= 127
-	Tab      		= 9
+	Ctrlq     = 17 //quit
+	Ctrls     = 19 //save
+	Ctrlz     = 26 //undo
+	Ctrly     = 25 //redo
+	Ctrlk     = 11 //up
+	Ctrlj     = 10  //down
+	Ctrll     = 12 //right
+	Ctrlh     = 8 //left
+	Ctrlr 	  = 18 //Delete Row
+	Enter     = 13
+	BackSpace = 127
+	Tab       = 9
+)
+
+const (
+	// blue
+	FUNC   string = "func"
+	TYPE          = "type"
+	STRUCT        = "struct"
+	CONST         = "const"
+	VAR           = "var"
+	NIL           = "nil"
+
+	// pink
+	FOR    = "for"
+	IF     = "if"
+	ELIF   = "else if"
+	ELSE   = "else"
+	RETURN = "return"
+	DEFER  = "defer"
+
+	// green
+	ERR    = "error"
+	INT    = "int"
+	STRING = "string"
 )
 
 // ファイルデータ
@@ -115,7 +139,7 @@ func fromFile() {
 			log.Fatal(err)
 		}
 
-		data = strings.Replace(data + string(line), "\t", "    ", -1) + "\n"
+		data = strings.Replace(data+string(line), "\t", "    ", -1) + "\n"
 		if !isPrefix {
 			File.data = append(File.data, data)
 			data = ""
@@ -184,14 +208,14 @@ func getChar() {
 		switch len(p) {
 		case 3:
 			switch p[2] {
-			case ArrowUp:
-				moveCursor(0, -1)
-			case ArrowDown:
-				moveCursor(0, 1)
-			case ArrowRight:
-				moveCursor(1, 0)
-			case ArrowLeft:
-				moveCursor(-1, 0)
+			// case ArrowUp:
+			// 	moveCursor(0, -1)
+			// case ArrowDown:
+			// 	moveCursor(0, 1)
+			// case ArrowRight:
+			// 	moveCursor(1, 0)
+			// case ArrowLeft:
+			// 	moveCursor(-1, 0)
 			}
 		default:
 			switch p[0] {
@@ -206,10 +230,18 @@ func getChar() {
 				toFile()
 			case Ctrlz:
 			case Ctrly:
-			case Ctrlu:
-			case Ctrld:
 			case Ctrlr:
+			case Ctrlk:
+				moveCursor(0, -1)
+			case Ctrlj:
+				moveCursor(0, 1)
 			case Ctrll:
+				moveCursor(1, 0)
+			case Ctrlh:
+				moveCursor(-1, 0)
+			case Tab:
+				textInsertion("    ")
+				moveCursor(4, 0)
 			default:
 				textInsertion(*(*string)(unsafe.Pointer(&p)))
 				moveCursor(1, 0)
@@ -350,10 +382,20 @@ func enter() {
 	}
 
 	File.data = append(File.data[:r+1], File.data[r:]...)
-	File.data[r+1] = File.data[r][c:]
+	File.data[r+1] = isTab(File.data[r][:c]) + File.data[r][c:]
 	File.data[r] = File.data[r][:c]
 	insertNewLineCode(&File.data[r+1])
 	insertNewLineCode(&File.data[r])
+}
+
+// 前の行のタブを引き継ぐ
+func isTab(s string) string {
+	n := strings.Count(s, "    ")
+	t := ""
+	for i := 0; i < n; i++ {
+		t += "    "
+	}
+	return t
 }
 
 // 改行コードを挿入
