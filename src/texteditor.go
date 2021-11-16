@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"unicode/utf8"
 	"unsafe"
+	"regexp"
 )
 
 // キー対応表
@@ -39,28 +40,6 @@ const (
 	Tab       = 9
 )
 
-const (
-	// blue
-	FUNC   string = "func"
-	TYPE          = "type"
-	STRUCT        = "struct"
-	CONST         = "const"
-	VAR           = "var"
-	NIL           = "nil"
-
-	// pink
-	FOR    = "for"
-	IF     = "if"
-	ELIF   = "else if"
-	ELSE   = "else"
-	RETURN = "return"
-	DEFER  = "defer"
-
-	// green
-	ERR    = "error"
-	INT    = "int"
-	STRING = "string"
-)
 
 // ファイルデータ
 type TString struct {
@@ -80,7 +59,9 @@ type EditorConfig struct {
 	wsCol           int          //列
 	drawingStartRow int          //描画する最初の行
 	drawingStartCol int          //描画する最初の列
+	reservedWords  []string
 }
+var Editor EditorConfig
 
 // Editorクラスのコンストラクタ
 func (ele *EditorConfig) construct() {
@@ -91,7 +72,22 @@ func (ele *EditorConfig) construct() {
 	getWindowSize()
 }
 
-var Editor EditorConfig
+type ReservedWords struct {
+	words [][]string
+	/** 行数:色
+	 * 0:blue
+	 * 1:pink
+	 * 2:green
+	*/
+}
+var RWords ReservedWords
+
+func (ele *ReservedWords) construct() {
+	ele.words = [][]string{
+		{"func", "type", "struct", "const", "var", "nil", "package", "import"},
+		{ "for", "if", "else if", "else", "return", "defer"},
+		{ "int", "string", "error"}}
+}
 
 // ウィンドウサイズを取得し、Editorに設定する
 func getWindowSize() {
@@ -149,7 +145,7 @@ func fromFile() {
 
 // ファイル書き込み
 func toFile() {
-	f, err := os.OpenFile(File.path, os.O_RDWR|os.O_CREATE, 0666)
+	f, err := os.Create(File.path)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -204,18 +200,17 @@ func getChar() {
 	running := true
 	for running {
 		p := <-bufCh
-		// fmt.Println(p) //中身確認用
 		switch len(p) {
 		case 3:
 			switch p[2] {
-			// case ArrowUp:
-			// 	moveCursor(0, -1)
-			// case ArrowDown:
-			// 	moveCursor(0, 1)
-			// case ArrowRight:
-			// 	moveCursor(1, 0)
-			// case ArrowLeft:
-			// 	moveCursor(-1, 0)
+			case ArrowUp:
+				moveCursor(0, -1)
+			case ArrowDown:
+				moveCursor(0, 1)
+			case ArrowRight:
+				moveCursor(1, 0)
+			case ArrowLeft:
+				moveCursor(-1, 0)
 			}
 		default:
 			switch p[0] {
@@ -231,6 +226,7 @@ func getChar() {
 			case Ctrlz:
 			case Ctrly:
 			case Ctrlr:
+				deleteRow()
 			case Ctrlk:
 				moveCursor(0, -1)
 			case Ctrlj:
@@ -341,15 +337,63 @@ func setText() {
 			text := File.data[y+Editor.drawingStartRow]
 			runeText := []rune(text)
 
+			colors := checkReservedWord(File.data[y+Editor.drawingStartRow])
+
 			x := 0
 			for j := Editor.drawingStartCol; j < min(Editor.drawingStartCol+Editor.wsCol, len(runeText)); j++ {
-				termbox.SetCell(x, y, runeText[j], termbox.ColorDefault, termbox.ColorDefault)
+				fontColor := decideColor(colors[j])
+				termbox.SetCell(x, y, runeText[j], fontColor, termbox.ColorDefault)
 
 				x += utf8.RuneCountInString(string(text[j]))
 			}
 		}
 	}
 	termbox.Flush()
+}
+
+func decideColor(n int) termbox.Attribute {
+	switch n {
+	case 1:
+		return termbox.ColorBlue
+	case 2:
+		return termbox.ColorLightMagenta
+	case 3:
+		return termbox.ColorLightGreen
+	}
+	// 0のとき
+	return termbox.ColorDefault
+}
+
+// 予約語を確認
+func checkReservedWord(s string) []int {
+	res := make([]int, len(s))
+	for row, V := range RWords.words {
+	for _, v := range V {
+		i := 0
+		for {
+			i= strings.Index(s[i:],v)
+			if i == -1 {
+				break
+			}
+
+			num := row+1
+			r := `[a-z]|[A-Z]|[0-9]`
+			if (i > 0 && check_regexp(r, string(s[i-1]))) || (i+len(v) < len(s)-1 && check_regexp(r, string(s[i+len(v)]))) {
+				num = 0
+			}
+
+			for j := i; j < i + len(v); j++ {
+				res[j] = num
+			}
+			i += len(v)
+		}
+	}
+}
+	return res
+}
+
+func check_regexp(reg, str string) bool{
+	return (regexp.MustCompile(reg).Match([]byte(str)))
 }
 
 // 文字を挿入する
@@ -363,12 +407,13 @@ func textInsertion(s string) {
 	}
 
 	length := len(File.data[r])
-	if length == c && File.data[r][length-1] == '\n' {
+	if length == c && length >= 1 && File.data[r][length-1] == '\n' {
 		File.data[r] = strings.Replace(File.data[r], "\n", s, -1) + "\n"
 		return
 	}
 
 	File.data[r] = File.data[r][:c] + s + File.data[r][c:]
+	insertNewLineCode(&File.data[r])
 }
 
 // enterを押したとき
@@ -426,11 +471,23 @@ func backSpace() {
 	moveCursor(-1, 0)
 }
 
+// 一行削除する
+func deleteRow() {
+	r := Editor.cursory + Editor.drawingStartRow
+	if r == 0 && len(File.data) <= 1 {
+		File.data[r] = ""
+		return
+	}
+	File.data = append(File.data[:r], File.data[r+1:]...)
+	moveCursor(0, -1)
+}
+
 func main() {
 	File.path = os.Args[1]
 	fromFile()
 
 	Editor.construct()
+	RWords.construct()
 
 	settingTermios()
 
