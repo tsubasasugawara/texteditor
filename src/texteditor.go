@@ -1,7 +1,6 @@
 package main
 
 import (
-	// "fmt"
 	"bufio"
 	"github.com/nsf/termbox-go"
 	"github.com/pkg/term/termios"
@@ -20,31 +19,31 @@ import (
 // キー対応表
 const (
 	// size 3 Scroll
-	ArrowUp    byte = 65
-	ArrowDown       = 66
-	ArrowRight      = 67
-	ArrowLeft       = 68
+	ArrowUp	byte = 65
+	ArrowDown	   = 66
+	ArrowRight	  = 67
+	ArrowLeft	   = 68
 
 	// size 1
-	Ctrlq     = 17 //quit
-	Ctrls     = 19 //save
-	Ctrlz     = 26 //undo
-	Ctrly     = 25 //redo
-	Ctrlk     = 11 //up
-	Ctrlj     = 10  //down
-	Ctrll     = 12 //right
-	Ctrlh     = 8 //left
-	Ctrlr 	  = 18 //Delete Row
-	Enter     = 13
+	Ctrlq	 = 17 //quit
+	Ctrls	 = 19 //save
+	Ctrlz	 = 26 //undo
+	Ctrly	 = 25 //redo
+	Ctrlk	 = 11 //up
+	Ctrlj	 = 10 //down
+	Ctrll	 = 12 //right
+	Ctrlh	 = 8  //left
+	Ctrlr	 = 18 //Delete Row
+	Enter	 = 13
 	BackSpace = 127
-	Tab       = 9
+	Tab	   = 9
 )
 
 
 // ファイルデータ
 type TString struct {
-	data    []string //ファイルの中身
-	path    string   //ファイルのパス
+	data	[]string //ファイルの中身
+	path	string   //ファイルのパス
 	history []string //操作の履歴
 }
 
@@ -53,12 +52,12 @@ var File TString
 // エディター
 type EditorConfig struct {
 	defaultTtystate unix.Termios //初期のターミナル属性
-	cursorx         int          //カーソルのx座標
-	cursory         int          //カーソルのy座標
-	wsRow           int          //行
-	wsCol           int          //列
-	drawingStartRow int          //描画する最初の行
-	drawingStartCol int          //描画する最初の列
+	cursorx		 int		  //カーソルのx座標
+	cursory		 int		  //カーソルのy座標
+	wsRow		   int		  //行
+	wsCol		   int		  //列
+	drawingStartRow int		  //描画する最初の行
+	drawingStartCol int		  //描画する最初の列
 	reservedWords  []string
 }
 var Editor EditorConfig
@@ -86,7 +85,8 @@ func (ele *ReservedWords) construct() {
 	ele.words = [][]string{
 		{"func", "type", "struct", "const", "var", "nil", "package", "import"},
 		{ "for", "if", "else if", "else", "return", "defer"},
-		{ "int", "string", "error"}}
+		{ "int", "string", "error"},
+	}
 }
 
 // ウィンドウサイズを取得し、Editorに設定する
@@ -135,7 +135,7 @@ func fromFile() {
 			log.Fatal(err)
 		}
 
-		data = strings.Replace(data+string(line), "\t", "    ", -1) + "\n"
+		data = strings.Replace(data+string(line), "\t", "	", -1) + "\n"
 		if !isPrefix {
 			File.data = append(File.data, data)
 			data = ""
@@ -152,7 +152,7 @@ func toFile() {
 	defer f.Close()
 
 	for i := 0; i < len(File.data); i++ {
-		data := strings.Replace(File.data[i], "    ", "\t", -1)
+		data := strings.Replace(File.data[i], "	", "\t", -1)
 		_, er := f.WriteString(data)
 		if er != nil {
 			log.Fatal(er)
@@ -236,7 +236,7 @@ func getChar() {
 			case Ctrlh:
 				moveCursor(-1, 0)
 			case Tab:
-				textInsertion("    ")
+				textInsertion("	")
 				moveCursor(4, 0)
 			default:
 				textInsertion(*(*string)(unsafe.Pointer(&p)))
@@ -378,7 +378,7 @@ func checkReservedWord(s string) []int {
 
 			num := row+1
 			r := `[a-z]|[A-Z]|[0-9]`
-			if (i > 0 && check_regexp(r, string(s[i-1]))) || (i+len(v) < len(s)-1 && check_regexp(r, string(s[i+len(v)]))) {
+			if (i > 0 && check_regexp(r, string(s[i-1]))) || (i+len(v) < len(s)-1 && check_regexp(r, string(s[i+len(v)]))) || (i > 0 && i+len(v) < len(s)-1 && s[i-1] == '"' || s[i+len(v)] == '"') {
 				num = 0
 			}
 
@@ -435,10 +435,10 @@ func enter() {
 
 // 前の行のタブを引き継ぐ
 func isTab(s string) string {
-	n := strings.Count(s, "    ")
+	n := strings.Count(s, "	")
 	t := ""
 	for i := 0; i < n; i++ {
-		t += "    "
+		t += "	"
 	}
 	return t
 }
