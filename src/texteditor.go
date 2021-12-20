@@ -84,8 +84,8 @@ var RWords ReservedWords
 func (ele *ReservedWords) construct() {
 	ele.words = [][]string{
 		{"func", "type", "struct", "const", "var", "nil", "package", "import"},
-		{ "for", "if", "else if", "else", "return", "defer"},
-		{ "int", "string", "error"},
+		{ "for", "if", "else", "return", "defer"},
+		/*{ "int", "string", "error"},*/
 	}
 }
 
